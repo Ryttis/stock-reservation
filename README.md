@@ -4,8 +4,8 @@
 [x] Add fixtures
 [x] Implement allocation strategy
 [x] Add allocation unit tests
-[ ] Implement reservation service
-[ ] Add reservation service tests
+[x] Implement reservation service
+[x] Add reservation service tests
 [ ] Implement API endpoints
 [ ] Add API tests
 [ ] Add README

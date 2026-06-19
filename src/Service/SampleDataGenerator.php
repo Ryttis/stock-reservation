@@ -191,7 +191,9 @@ final class SampleDataGenerator
             ++$ordersCount;
 
             foreach ($items as $sku => $quantity) {
-                $this->em->persist(new OrderItem($order, $products[$sku], $quantity));
+                $orderItem = new OrderItem($order, $products[$sku], $quantity);
+                $order->addOrderItem($orderItem);
+                $this->em->persist($orderItem);
                 ++$itemsCount;
             }
         }

@@ -1,0 +1,5 @@
+services:
+    App\Service\StockReservationService:
+        public: true
+        autowire: true
+        autoconfigure: true
