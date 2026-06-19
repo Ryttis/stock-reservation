@@ -18,6 +18,7 @@ Layered monolith with clear separation of concerns:
 - **Application services** — `StockReservationService`, `OrderShippingService`, `OrderCancellationService`; each performs a single `flush()` at the end
 - **Thin API controllers** — find entity, call service, return JSON; no business logic
 - **Pure allocation module** — `FewestWarehousesAllocationStrategy` has zero Symfony or Doctrine dependencies; accepts DTOs and returns a result; fully unit-testable in isolation
+- **API exception handling** — `ApiExceptionSubscriber` converts exceptions to JSON for all `/api/*` routes; 404 and 409 responses are JSON
 - **Integration tests** — real database, no mocks; tests cover all service and controller layers
 - **Deterministic behavior** — tiebreaking by smallest warehouse surplus; ordering by `createdAt ASC, id ASC` during cancellation recalculation
 - **Audit trail** — `ReservationItem` records are preserved on shipping (status → `released`) and cancellation (status → `cancelled`)
@@ -42,73 +43,52 @@ Cancelling a reserved order triggers recalculation of all remaining active reser
 
 ## Docker Services
 
-This project uses Docker Compose to run supporting services. **PHP itself runs on the host.** There is no PHP application container.
+The project runs through Docker Compose. PHP-FPM runs in the `app` container, Nginx exposes the API on port `8000`, and MySQL runs in the `database` container.
 
-| Service      | Image             | Host port  | Purpose                          |
-|--------------|-------------------|------------|----------------------------------|
-| `database`   | mysql:8.4         | `3307`     | MySQL database                   |
-| `phpmyadmin` | phpmyadmin:latest | `8081`     | Database UI (`http://127.0.0.1:8081`) |
-| `mailer`     | axllent/mailpit   | random     | Local SMTP catch-all             |
+| Service      | Image                  | Host port | Purpose                               |
+|--------------|------------------------|-----------|---------------------------------------|
+| `app`        | PHP 8.4 FPM (built)    | —         | Symfony application                   |
+| `nginx`      | nginx:1.27-alpine      | `8000`    | HTTP server — `http://127.0.0.1:8000` |
+| `database`   | mysql:8.4              | `3307`    | MySQL database                        |
+| `phpmyadmin` | phpmyadmin:latest      | `8081`    | Database UI — `http://127.0.0.1:8081` |
 
-Start all supporting services:
-
-```bash
-docker compose up -d
-```
-
-Stop them:
-
-```bash
-docker compose down
-```
+Inside Docker, the application connects to MySQL using the Compose service name `database` and internal port `3306`. The host port `3307` is only for connecting from the host machine or external DB clients (e.g. phpMyAdmin, a local MySQL client).
 
 ## Setup
 
-### 1. Start Docker services
+### 1. Build and start all services
 
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
-
-This starts MySQL on `127.0.0.1:3307` and phpMyAdmin on `http://127.0.0.1:8081`.
 
 ### 2. Install PHP dependencies
 
 ```bash
-composer install
+docker compose exec app composer install
 ```
 
 ### 3. Configure environment
 
-```bash
-cp .env .env.local
-```
-
-Edit `.env.local` and point `DATABASE_URL` at the Docker MySQL container:
+The `app` container already has `DATABASE_URL` set via `compose.yaml`:
 
 ```dotenv
-DATABASE_URL="mysql://app:app@127.0.0.1:3307/stock_reservation?serverVersion=8.4&charset=utf8mb4"
+DATABASE_URL="mysql://app:app@database:3306/stock_reservation?serverVersion=8.4&charset=utf8mb4"
 ```
 
-MySQL credentials (defined in `compose.yaml`): user `app`, password `app`, database `stock_reservation`.
+No `.env.local` changes are needed for Docker. The MySQL credentials are `app` / `app` (defined in `compose.yaml`).
 
 ### 4. Create database and run migrations
 
 ```bash
-php bin/console doctrine:database:create --if-not-exists
-php bin/console doctrine:migrations:migrate
+docker compose exec app php bin/console doctrine:database:create --if-not-exists
+docker compose exec app php bin/console doctrine:migrations:migrate
 ```
 
 ### 5. Seed sample data
 
 ```bash
-php bin/console app:seed-sample-data
-```
-
-Use `--reset` to wipe existing data before seeding:
-
-```bash
-php bin/console app:seed-sample-data --reset
+docker compose exec app php bin/console app:seed-sample-data --reset
 ```
 
 ## Sample Data
@@ -140,7 +120,21 @@ The seeded dataset includes:
 
 ## Run
 
-Start the application server (PHP runs on the host):
+```bash
+docker compose up -d --build
+```
+
+The API is available at `http://127.0.0.1:8000`.
+
+## Optional: Run without Docker
+
+If you prefer to run PHP on the host instead of Docker, configure `.env.local` to point at the host-exposed MySQL port:
+
+```dotenv
+DATABASE_URL="mysql://app:app@127.0.0.1:3307/stock_reservation?serverVersion=8.4&charset=utf8mb4"
+```
+
+Start the application:
 
 ```bash
 symfony server:start
@@ -152,9 +146,9 @@ Or using the built-in PHP server:
 php -S 127.0.0.1:8000 -t public
 ```
 
-The API is then available at `http://127.0.0.1:8000`.
-
 ## API Endpoints
+
+All error responses under `/api/*` are JSON. Unexpected errors return HTTP 500 with `{"error": "Internal server error."}`.
 
 ### GET /api/products
 
@@ -196,7 +190,7 @@ Returns a compact list of all orders.
 
 ### GET /api/orders/{id}
 
-Returns full order detail including items and reservation.
+Returns full order detail including items and reservation. Returns `404` JSON if the order does not exist. The `reservation` field is `null` for pending orders.
 
 ```json
 {
@@ -224,95 +218,96 @@ Returns full order detail including items and reservation.
 }
 ```
 
-Returns `404` if the order does not exist. The `reservation` field is `null` for pending orders.
-
 ### POST /api/orders/{id}/reserve
 
-Reserves stock for a pending order. Sets status to `reserved` (fully allocated) or `partially_reserved`.
+Reserves stock for a pending order. Sets status to `reserved` or `partially_reserved`. Returns `409` JSON if the order cannot be reserved.
 
 ```json
-{
-  "id": 1,
-  "status": "reserved",
-  "createdAt": "2025-01-01T10:00:00+00:00",
-  "shippedAt": null,
-  "cancelledAt": null
-}
+{ "id": 1, "status": "reserved", "createdAt": "...", "shippedAt": null, "cancelledAt": null }
 ```
-
-Returns `409` if the order cannot be reserved (wrong status, already reserved, no items).
 
 ### POST /api/orders/{id}/ship
 
-Ships a reserved or partially reserved order. Decreases `WarehouseStock` quantities. Sets status to `shipped`.
+Ships a reserved or partially reserved order. Decreases `WarehouseStock` quantities. Sets status to `shipped`. Returns `409` JSON if the order cannot be shipped.
 
 ```json
-{
-  "id": 1,
-  "status": "shipped",
-  "createdAt": "2025-01-01T10:00:00+00:00",
-  "shippedAt": "2025-01-02T09:00:00+00:00",
-  "cancelledAt": null
-}
+{ "id": 1, "status": "shipped", "createdAt": "...", "shippedAt": "...", "cancelledAt": null }
 ```
-
-Returns `409` if the order cannot be shipped.
 
 ### POST /api/orders/{id}/cancel
 
-Cancels a reserved or partially reserved order. Recalculates all remaining active reservations using the freed stock. Sets status to `cancelled`.
+Cancels a reserved or partially reserved order. Recalculates active reservations using freed stock. Sets status to `cancelled`. Returns `409` JSON if the order cannot be cancelled.
 
 ```json
-{
-  "id": 1,
-  "status": "cancelled",
-  "createdAt": "2025-01-01T10:00:00+00:00",
-  "shippedAt": null,
-  "cancelledAt": "2025-01-02T08:00:00+00:00"
-}
+{ "id": 1, "status": "cancelled", "createdAt": "...", "shippedAt": null, "cancelledAt": "..." }
 ```
-
-Returns `409` if the order cannot be cancelled.
 
 ## Manual API Check
 
-After seeding sample data and starting the application server:
+Requires `jq` for JSON formatting (optional but recommended).
 
 ```bash
-curl -s http://127.0.0.1:8000/api/products | jq
-curl -s http://127.0.0.1:8000/api/warehouses | jq
-curl -s http://127.0.0.1:8000/api/orders | jq
-curl -s http://127.0.0.1:8000/api/orders/1 | jq
-curl -s -X POST http://127.0.0.1:8000/api/orders/1/reserve | jq
-curl -s -X POST http://127.0.0.1:8000/api/orders/1/ship | jq
-curl -s -X POST http://127.0.0.1:8000/api/orders/2/reserve | jq
-curl -s -X POST http://127.0.0.1:8000/api/orders/2/cancel | jq
+BASE_URL="http://127.0.0.1:8000"
+
+curl -s "$BASE_URL/api/products" | jq
+curl -s "$BASE_URL/api/warehouses" | jq
+curl -s "$BASE_URL/api/orders" | jq
+
+ORDER_ID=$(curl -s "$BASE_URL/api/orders" | jq 'map(select(.status == "pending"))[0].id')
+CANCEL_ORDER_ID=$(curl -s "$BASE_URL/api/orders" | jq 'map(select(.status == "pending"))[1].id')
+
+echo "Ship flow order: $ORDER_ID"
+curl -s "$BASE_URL/api/orders/$ORDER_ID" | jq
+curl -s -X POST "$BASE_URL/api/orders/$ORDER_ID/reserve" | jq
+curl -s -X POST "$BASE_URL/api/orders/$ORDER_ID/ship" | jq
+curl -s "$BASE_URL/api/orders/$ORDER_ID" | jq
+
+echo "Cancel flow order: $CANCEL_ORDER_ID"
+curl -s "$BASE_URL/api/orders/$CANCEL_ORDER_ID" | jq
+curl -s -X POST "$BASE_URL/api/orders/$CANCEL_ORDER_ID/reserve" | jq
+curl -s -X POST "$BASE_URL/api/orders/$CANCEL_ORDER_ID/cancel" | jq
+curl -s "$BASE_URL/api/orders/$CANCEL_ORDER_ID" | jq
+
+echo "404 JSON check"
+curl -i "$BASE_URL/api/orders/999999"
+
+echo "409 JSON check"
+CONFLICT_ORDER_ID=$(curl -s "$BASE_URL/api/orders" | jq 'map(select(.status == "pending"))[0].id')
+curl -s -X POST "$BASE_URL/api/orders/$CONFLICT_ORDER_ID/reserve" | jq
+curl -i -X POST "$BASE_URL/api/orders/$CONFLICT_ORDER_ID/reserve"
 ```
+
+Note: After `--reset` re-seeding, MySQL auto-increment IDs continue from where they left off. The script above selects orders dynamically by status rather than by hardcoded ID.
 
 ## Testing
 
-Tests use an isolated SQLite database by default and do not require Docker to be running.
+Tests use the `stock_reservation_test` MySQL database. Set it up once before running tests:
+
+```bash
+docker compose exec database mysql -uroot -proot -e "CREATE DATABASE IF NOT EXISTS stock_reservation_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci; GRANT ALL PRIVILEGES ON stock_reservation_test.* TO 'app'@'%'; FLUSH PRIVILEGES;"
+docker compose exec app php bin/console doctrine:migrations:migrate --env=test --no-interaction
+```
 
 Run the full test suite:
 
 ```bash
-php bin/phpunit
-php bin/phpunit --no-coverage
+docker compose exec app php bin/phpunit
+docker compose exec app php bin/phpunit --no-coverage
 ```
 
 Run specific groups:
 
 ```bash
-php bin/phpunit tests/Integration/Controller --no-coverage
-php bin/phpunit tests/Integration/Service --no-coverage
+docker compose exec app php bin/phpunit tests/Integration/Controller --no-coverage
+docker compose exec app php bin/phpunit tests/Integration/Service --no-coverage
 ```
 
 ## Validation
 
 ```bash
-php bin/console lint:container
-php bin/console doctrine:schema:validate
-php bin/console debug:router | grep '/api/'
+docker compose exec app php bin/console lint:container
+docker compose exec app php bin/console doctrine:schema:validate
+docker compose exec app php bin/console debug:router | grep '/api/'
 ```
 
 ## Expected API Routes
@@ -336,6 +331,7 @@ src/
     Api/              Thin JSON controllers
   Entity/             Doctrine ORM entities
   Enum/               OrderStatus, ReservationStatus
+  EventSubscriber/    ApiExceptionSubscriber
   Repository/
   Service/            Application services
 
@@ -355,6 +351,7 @@ tests/
 - [x] Cancellation service with active reservation recalculation
 - [x] Read API endpoints (products, warehouses, orders)
 - [x] Order action API endpoints (reserve, ship, cancel)
+- [x] JSON API error responses for 404 and 409 cases
 - [x] Unit tests (allocation strategy, entity guards)
 - [x] Integration tests (all services)
 - [x] API tests (all endpoints)
