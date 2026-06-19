@@ -40,41 +40,80 @@ Cancelling a reserved order triggers recalculation of all remaining active reser
 - When multiple warehouse combinations tie on count, the one with the smallest total surplus is preferred
 - Result is deterministic for the same input
 
+## Docker Services
+
+This project uses Docker Compose to run supporting services. **PHP itself runs on the host.** There is no PHP application container.
+
+| Service      | Image             | Host port  | Purpose                          |
+|--------------|-------------------|------------|----------------------------------|
+| `database`   | mysql:8.4         | `3307`     | MySQL database                   |
+| `phpmyadmin` | phpmyadmin:latest | `8081`     | Database UI (`http://127.0.0.1:8081`) |
+| `mailer`     | axllent/mailpit   | random     | Local SMTP catch-all             |
+
+Start all supporting services:
+
+```bash
+docker compose up -d
+```
+
+Stop them:
+
+```bash
+docker compose down
+```
+
 ## Setup
+
+### 1. Start Docker services
+
+```bash
+docker compose up -d
+```
+
+This starts MySQL on `127.0.0.1:3307` and phpMyAdmin on `http://127.0.0.1:8081`.
+
+### 2. Install PHP dependencies
 
 ```bash
 composer install
+```
+
+### 3. Configure environment
+
+```bash
 cp .env .env.local
 ```
 
-Edit `.env.local` and set your database connection:
+Edit `.env.local` and point `DATABASE_URL` at the Docker MySQL container:
 
 ```dotenv
-DATABASE_URL="mysql://user:password@127.0.0.1:3306/stock_reservation?serverVersion=8.4&charset=utf8mb4"
+DATABASE_URL="mysql://app:app@127.0.0.1:3307/stock_reservation?serverVersion=8.4&charset=utf8mb4"
 ```
 
-Create the database and run migrations:
+MySQL credentials (defined in `compose.yaml`): user `app`, password `app`, database `stock_reservation`.
+
+### 4. Create database and run migrations
 
 ```bash
-php bin/console doctrine:database:create
+php bin/console doctrine:database:create --if-not-exists
 php bin/console doctrine:migrations:migrate
 ```
 
-## Sample Data
-
-Seed the included sample dataset:
+### 5. Seed sample data
 
 ```bash
 php bin/console app:seed-sample-data
 ```
 
-Add `--reset` to wipe existing data before seeding:
+Use `--reset` to wipe existing data before seeding:
 
 ```bash
 php bin/console app:seed-sample-data --reset
 ```
 
-The sample dataset includes:
+## Sample Data
+
+The seeded dataset includes:
 
 **Products:** `PENCIL`, `NOTEBOOK`, `BAG`, `PEN`, `ERASER`
 
@@ -92,16 +131,16 @@ The sample dataset includes:
 
 **Orders:**
 
-| Order | Items                              |
-|-------|------------------------------------|
-| 1     | PENCIL ×8, NOTEBOOK ×2             |
-| 2     | PENCIL ×12, NOTEBOOK ×8, BAG ×2    |
-| 3     | BAG ×10, ERASER ×30               |
-| 4     | PENCIL ×100                        |
+| Order | Items                           |
+|-------|---------------------------------|
+| 1     | PENCIL ×8, NOTEBOOK ×2          |
+| 2     | PENCIL ×12, NOTEBOOK ×8, BAG ×2 |
+| 3     | BAG ×10, ERASER ×30             |
+| 4     | PENCIL ×100                     |
 
 ## Run
 
-Using the Symfony CLI:
+Start the application server (PHP runs on the host):
 
 ```bash
 symfony server:start
@@ -112,6 +151,8 @@ Or using the built-in PHP server:
 ```bash
 php -S 127.0.0.1:8000 -t public
 ```
+
+The API is then available at `http://127.0.0.1:8000`.
 
 ## API Endpoints
 
@@ -235,7 +276,7 @@ Returns `409` if the order cannot be cancelled.
 
 ## Manual API Check
 
-After seeding sample data and starting the server:
+After seeding sample data and starting the application server:
 
 ```bash
 curl -s http://127.0.0.1:8000/api/products | jq
@@ -250,6 +291,8 @@ curl -s -X POST http://127.0.0.1:8000/api/orders/2/cancel | jq
 
 ## Testing
 
+Tests use an isolated SQLite database by default and do not require Docker to be running.
+
 Run the full test suite:
 
 ```bash
@@ -257,7 +300,7 @@ php bin/phpunit
 php bin/phpunit --no-coverage
 ```
 
-Run specific test groups:
+Run specific groups:
 
 ```bash
 php bin/phpunit tests/Integration/Controller --no-coverage
