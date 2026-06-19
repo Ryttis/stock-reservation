@@ -19,7 +19,7 @@ class Reservation
     private ?int $id = null;
 
     #[ORM\OneToOne(inversedBy: 'reservation')]
-    #[ORM\JoinColumn(nullable: false)]
+    #[ORM\JoinColumn(nullable: false, unique: true)]
     private CustomerOrder $customerOrder;
 
     #[ORM\Column(type: 'string', length: 32, enumType: ReservationStatus::class)]
@@ -32,7 +32,7 @@ class Reservation
     #[ORM\OneToMany(
         mappedBy: 'reservation',
         targetEntity: ReservationItem::class,
-        cascade: ['persist', 'remove'],
+        cascade: ['persist'],
         orphanRemoval: true,
     )]
     private Collection $reservationItems;
@@ -43,6 +43,7 @@ class Reservation
         $this->status = ReservationStatus::Active;
         $this->createdAt = new \DateTimeImmutable();
         $this->reservationItems = new ArrayCollection();
+        $customerOrder->setReservation($this);
     }
 
     public function getId(): ?int
@@ -90,7 +91,11 @@ class Reservation
 
     public function removeReservationItem(ReservationItem $reservationItem): static
     {
-        $this->reservationItems->removeElement($reservationItem);
+        if ($this->reservationItems->removeElement($reservationItem)) {
+            if ($reservationItem->getReservation() === $this) {
+                $reservationItem->setReservation(null);
+            }
+        }
 
         return $this;
     }

@@ -17,7 +17,7 @@ class OrderItem
 
     #[ORM\ManyToOne(inversedBy: 'orderItems')]
     #[ORM\JoinColumn(nullable: false)]
-    private CustomerOrder $customerOrder;
+    private ?CustomerOrder $customerOrder = null;
 
     #[ORM\ManyToOne]
     #[ORM\JoinColumn(nullable: false)]
@@ -38,13 +38,17 @@ class OrderItem
         return $this->id;
     }
 
-    public function getCustomerOrder(): CustomerOrder
+    public function getCustomerOrder(): ?CustomerOrder
     {
         return $this->customerOrder;
     }
 
-    public function setCustomerOrder(CustomerOrder $customerOrder): static
+    public function setCustomerOrder(?CustomerOrder $customerOrder): static
     {
+        if ($this->customerOrder === $customerOrder) {
+            return $this;
+        }
+
         $this->customerOrder = $customerOrder;
 
         return $this;

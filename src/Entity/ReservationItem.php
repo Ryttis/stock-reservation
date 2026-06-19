@@ -8,6 +8,10 @@ use Doctrine\ORM\Mapping as ORM;
 
 #[ORM\Entity]
 #[ORM\Table(name: 'reservation_item')]
+#[ORM\UniqueConstraint(name: 'unique_reservation_warehouse_product', columns: ['reservation_id', 'warehouse_id', 'product_id'])]
+#[ORM\Index(name: 'idx_reservation_item_reservation', columns: ['reservation_id'])]
+#[ORM\Index(name: 'idx_reservation_item_warehouse', columns: ['warehouse_id'])]
+#[ORM\Index(name: 'idx_reservation_item_product', columns: ['product_id'])]
 class ReservationItem
 {
     #[ORM\Id]
@@ -17,7 +21,7 @@ class ReservationItem
 
     #[ORM\ManyToOne(inversedBy: 'reservationItems')]
     #[ORM\JoinColumn(nullable: false)]
-    private Reservation $reservation;
+    private ?Reservation $reservation = null;
 
     #[ORM\ManyToOne]
     #[ORM\JoinColumn(nullable: false)]
@@ -43,13 +47,17 @@ class ReservationItem
         return $this->id;
     }
 
-    public function getReservation(): Reservation
+    public function getReservation(): ?Reservation
     {
         return $this->reservation;
     }
 
-    public function setReservation(Reservation $reservation): static
+    public function setReservation(?Reservation $reservation): static
     {
+        if ($this->reservation === $reservation) {
+            return $this;
+        }
+
         $this->reservation = $reservation;
 
         return $this;

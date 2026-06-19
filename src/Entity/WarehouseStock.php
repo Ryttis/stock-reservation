@@ -9,6 +9,8 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Entity]
 #[ORM\Table(name: 'warehouse_stock')]
 #[ORM\UniqueConstraint(name: 'unique_warehouse_product', columns: ['warehouse_id', 'product_id'])]
+#[ORM\Index(name: 'idx_warehouse_stock_warehouse', columns: ['warehouse_id'])]
+#[ORM\Index(name: 'idx_warehouse_stock_product', columns: ['product_id'])]
 class WarehouseStock
 {
     #[ORM\Id]

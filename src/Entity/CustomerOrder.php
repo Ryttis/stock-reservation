@@ -34,7 +34,7 @@ class CustomerOrder
     #[ORM\OneToMany(
         mappedBy: 'customerOrder',
         targetEntity: OrderItem::class,
-        cascade: ['persist', 'remove'],
+        cascade: ['persist'],
         orphanRemoval: true,
     )]
     private Collection $orderItems;
@@ -113,7 +113,11 @@ class CustomerOrder
 
     public function removeOrderItem(OrderItem $orderItem): static
     {
-        $this->orderItems->removeElement($orderItem);
+        if ($this->orderItems->removeElement($orderItem)) {
+            if ($orderItem->getCustomerOrder() === $this) {
+                $orderItem->setCustomerOrder(null);
+            }
+        }
 
         return $this;
     }
@@ -121,5 +125,12 @@ class CustomerOrder
     public function getReservation(): ?Reservation
     {
         return $this->reservation;
+    }
+
+    public function setReservation(?Reservation $reservation): static
+    {
+        $this->reservation = $reservation;
+
+        return $this;
     }
 }

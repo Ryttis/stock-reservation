@@ -1,7 +1,7 @@
 [x] Setup project
-[ ] Create entities
-[ ] Create migrations
-[ ] Add fixtures
+[x] Create entities
+[x] Create migrations
+[x] Add fixtures
 [ ] Implement allocation strategy
 [ ] Add allocation unit tests
 [ ] Implement reservation service
