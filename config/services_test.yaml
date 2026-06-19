@@ -3,3 +3,8 @@ services:
         public: true
         autowire: true
         autoconfigure: true
+
+    App\Service\OrderShippingService:
+        public: true
+        autowire: true
+        autoconfigure: true
