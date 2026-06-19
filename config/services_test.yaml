@@ -8,3 +8,8 @@ services:
         public: true
         autowire: true
         autoconfigure: true
+
+    App\Service\OrderCancellationService:
+        public: true
+        autowire: true
+        autoconfigure: true

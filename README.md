@@ -8,7 +8,7 @@
 [x] Add reservation service tests
 [x] Implement shipping service
 [x] Add shipping service tests
-[ ] Implement cancellation service
+[x] Implement cancellation service
 [ ] Implement API endpoints
 [ ] Add API tests
 [ ] Add README
