@@ -37,13 +37,6 @@ class Product
         return $this->sku;
     }
 
-    public function setSku(string $sku): static
-    {
-        $this->sku = $sku;
-
-        return $this;
-    }
-
     public function getName(): string
     {
         return $this->name;

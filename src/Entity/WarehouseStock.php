@@ -72,7 +72,37 @@ class WarehouseStock
 
     public function setQuantity(int $quantity): static
     {
+        if ($quantity < 0) {
+            throw new \InvalidArgumentException('Warehouse stock quantity cannot be negative.');
+        }
+
         $this->quantity = $quantity;
+
+        return $this;
+    }
+
+    public function increaseQuantity(int $amount): static
+    {
+        if ($amount <= 0) {
+            throw new \InvalidArgumentException('Amount must be greater than 0.');
+        }
+
+        $this->quantity += $amount;
+
+        return $this;
+    }
+
+    public function decreaseQuantity(int $amount): static
+    {
+        if ($amount <= 0) {
+            throw new \InvalidArgumentException('Amount must be greater than 0.');
+        }
+
+        if ($amount > $this->quantity) {
+            throw new \DomainException('Warehouse stock quantity cannot be negative.');
+        }
+
+        $this->quantity -= $amount;
 
         return $this;
     }

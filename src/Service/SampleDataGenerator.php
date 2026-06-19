@@ -36,15 +36,7 @@ final class SampleDataGenerator
         'WH_C' => ['PENCIL' => 100, 'NOTEBOOK' =>  0, 'BAG' =>  2, 'PEN' =>  1, 'ERASER' =>  0],
     ];
 
-    /**
-     * @var array<int, array<string, int>>
-     *
-     * Four scenarios for the reservation algorithm:
-     *   [0] single warehouse — WH_A covers PENCIL:10, NOTEBOOK:2
-     *   [1] multiple warehouses required
-     *   [2] partial reservation — total BAG:5, ERASER:25, both short
-     *   [3] competing order — requests all PENCIL stock (total 115 across warehouses)
-     */
+    /** @var array<int, array<string, int>> */
     private const ORDERS = [
         ['PENCIL' => 8, 'NOTEBOOK' => 2],
         ['PENCIL' => 12, 'NOTEBOOK' => 8, 'BAG' => 2],
@@ -161,8 +153,6 @@ final class SampleDataGenerator
             foreach ($entries as $sku => $quantity) {
                 $product = $products[$sku];
 
-                // findOneBy requires both sides to have DB identities.
-                // If either was just created this run, stock cannot exist yet.
                 $stock = ($warehouse->getId() !== null && $product->getId() !== null)
                     ? $repo->findOneBy(['warehouse' => $warehouse, 'product' => $product])
                     : null;
