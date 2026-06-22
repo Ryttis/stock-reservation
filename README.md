@@ -342,6 +342,31 @@ tests/
     Service/          Service integration tests (KernelTestCase)
 ```
 
+## Extension Path: Inventory & Fulfillment Module
+
+This project intentionally focuses on the stock-reservation core: warehouse stock, multi-warehouse allocation, reservations, shipping, and cancellation. In a real ERP, it would naturally become part of an **Inventory & Fulfillment module**, rather than a standalone microservice.
+
+The next extension is to create `Shipment` and `ShipmentItem` records from active reservation items. This allows one order to produce one or several shipment drafts when its products are allocated from different warehouses.
+
+```text
+CustomerOrder
+→ Reservation
+→ ReservationItem
+→ Shipment
+→ ShipmentItem
+→ Carrier delivery
+```
+
+A practical implementation path is:
+
+1. Add `Shipment` and `ShipmentItem` entities linked to an order and warehouse.
+2. Create shipment drafts after successful reservation, grouped by warehouse.
+3. Add a fulfillment workflow: `draft → picking → packed → shipped`.
+4. Add an `InventoryMovement` ledger for stock received, shipped, released, returned, and adjusted.
+5. Integrate carrier APIs behind a `CarrierClientInterface`, keeping carrier-specific code outside reservation and allocation logic.
+
+The module can remain inside a modular monolith with one database. It should be extracted into a separate service only when separate ownership, independent scaling, deployment, or reuse by multiple products creates a real need.
+
 ## Current Status
 
 - [x] Sample data (products, warehouses, stock levels, orders)
