@@ -11,6 +11,7 @@ use App\Service\StockReservationService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\Routing\Attribute\Route;
 
 #[Route('/api/orders/{id}', requirements: ['id' => '\d+'])]
@@ -92,10 +93,8 @@ final class OrderActionController
         return new JsonResponse(['error' => $message], $status);
     }
 
-    private function notFound(int $id): \Symfony\Component\HttpKernel\Exception\NotFoundHttpException
+    private function notFound(int $id): NotFoundHttpException
     {
-        return new \Symfony\Component\HttpKernel\Exception\NotFoundHttpException(
-            sprintf('Order %d not found.', $id)
-        );
+        return new NotFoundHttpException(sprintf('Order %d not found.', $id));
     }
 }
