@@ -10,7 +10,6 @@ use App\Service\OrderShippingService;
 use App\Service\StockReservationService;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
-use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\Routing\Attribute\Route;
 
@@ -28,12 +27,7 @@ final class OrderActionController
     public function reserve(int $id): JsonResponse
     {
         $order = $this->findOr404($id);
-
-        try {
-            $this->reservationService->reserve($order);
-        } catch (\DomainException $e) {
-            return $this->errorResponse($e->getMessage(), Response::HTTP_CONFLICT);
-        }
+        $this->reservationService->reserve($order);
 
         return $this->orderResponse($order);
     }
@@ -42,12 +36,7 @@ final class OrderActionController
     public function ship(int $id): JsonResponse
     {
         $order = $this->findOr404($id);
-
-        try {
-            $this->shippingService->ship($order);
-        } catch (\DomainException $e) {
-            return $this->errorResponse($e->getMessage(), Response::HTTP_CONFLICT);
-        }
+        $this->shippingService->ship($order);
 
         return $this->orderResponse($order);
     }
@@ -56,12 +45,7 @@ final class OrderActionController
     public function cancel(int $id): JsonResponse
     {
         $order = $this->findOr404($id);
-
-        try {
-            $this->cancellationService->cancel($order);
-        } catch (\DomainException $e) {
-            return $this->errorResponse($e->getMessage(), Response::HTTP_CONFLICT);
-        }
+        $this->cancellationService->cancel($order);
 
         return $this->orderResponse($order);
     }
@@ -71,7 +55,7 @@ final class OrderActionController
         $order = $this->em->find(CustomerOrder::class, $id);
 
         if ($order === null) {
-            throw $this->notFound($id);
+            throw new NotFoundHttpException(sprintf('Order %d not found.', $id));
         }
 
         return $order;
@@ -86,15 +70,5 @@ final class OrderActionController
             'shippedAt'   => $order->getShippedAt()?->format(\DateTimeInterface::ATOM),
             'cancelledAt' => $order->getCancelledAt()?->format(\DateTimeInterface::ATOM),
         ]);
-    }
-
-    private function errorResponse(string $message, int $status): JsonResponse
-    {
-        return new JsonResponse(['error' => $message], $status);
-    }
-
-    private function notFound(int $id): NotFoundHttpException
-    {
-        return new NotFoundHttpException(sprintf('Order %d not found.', $id));
     }
 }
